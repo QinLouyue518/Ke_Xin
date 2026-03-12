@@ -1,0 +1,56 @@
+name: flutter_application_1
+description: "A new Flutter project."
+publish_to: 'none'
+
+# 版本号
+version: 1.6.5+23
+
+environment:
+  sdk: ^3.10.3
+
+# 你的项目依赖
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations: # ✨ 添加本地化支持
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  shared_preferences: ^2.5.3
+  google_generative_ai: ^0.4.7
+  http: ^1.6.0
+  flutter_dotenv: ^5.1.0
+  table_calendar: ^3.1.2
+  intl: ^0.20.2 # ✨ 升级 intl 版本以匹配 flutter_localizations
+  flutter_markdown: ^0.7.7+1
+  flutter_animate: ^4.5.2
+  scrollable_positioned_list: ^0.3.8
+  uuid: ^4.4.0 # 添加 uuid 依赖
+  fl_chart: ^1.1.1
+  provider: ^6.1.5+1
+  share_plus: ^12.0.1
+  path_provider: ^2.1.5
+  qr_flutter: ^4.1.0
+  sensors_plus: ^7.0.0
+  audioplayers: ^6.5.1
+
+# 开发依赖
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # 图标插件放在这里
+  flutter_launcher_icons: ^0.13.1
+
+# Flutter 配置
+flutter:
+  uses-material-design: true
+  assets:
+    - .env
+    - assets/sounds/
+
+# 👇👇👇 图标配置必须顶格写，不能缩进，注释用 # 号 👇👇👇
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/icon.png"
+  min_sdk_android: 21 # 这里的注释必须用井号
