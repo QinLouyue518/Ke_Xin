@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../time_service.dart';
 import '../user_profile.dart';
 import '../services/vector_store_service.dart';
-import '../services/api_settings_service.dart';
 import '../widgets/reasoning_display.dart'; // ✨ 引入推理显示组件
 
 const Color kPageBackground = Color(0xFFF2F5F8);
@@ -89,20 +89,25 @@ class _GlobalChatPageState extends State<GlobalChatPage> {
     // 🌟 获取 AI 设置
     final String nickname = prefs.getString('ai_user_nickname') ?? "";
     final String styleName = prefs.getString('ai_style') ?? "温柔治愈型";
+    final String customStylePrompt = prefs.getString('ai_custom_style_prompt') ?? "";
     String stylePrompt = "";
     
-    switch (styleName) {
-      case "理性分析型":
-        stylePrompt = "请用【理性分析型】风格回复。逻辑缜密，拆解问题，多用“第一、第二、第三”的结构，提供客观、可执行的建议。少用情绪化词汇，多用逻辑推导。";
-        break;
-      case "苏格拉底型":
-        stylePrompt = "请用【苏格拉底型】风格回复。不要直接给出答案。多通过反问、隐喻来引导用户自己思考。像一位深邃的哲学家，激发用户的内省。";
-        break;
-      case "毒舌鞭策型":
-        stylePrompt = "请用【毒舌鞭策型】风格回复。一针见血，不留情面地指出用户的思维误区和软弱之处。言辞犀利，旨在打破用户的自我欺骗和舒适区，助其成长。不要无脑安慰。";
-        break;
-      default: // 温柔治愈型
-        stylePrompt = "请用【温柔治愈型】风格回复。语气要像一位知心姐姐，温暖、包容、充满鼓励。永远站在用户这一边，先共情，再安抚。";
+    if (styleName == "自定义风格" && customStylePrompt.isNotEmpty) {
+      stylePrompt = "请用以下自定义风格回复：$customStylePrompt";
+    } else {
+      switch (styleName) {
+        case "理性分析型":
+          stylePrompt = "请用【理性分析型】风格回复。逻辑缜密，拆解问题，多用'第一、第二、第三'的结构，提供客观、可执行的建议。少用情绪化词汇，多用逻辑推导。";
+          break;
+        case "苏格拉底型":
+          stylePrompt = "请用【苏格拉底型】风格回复。不要直接给出答案。多通过反问、隐喻来引导用户自己思考。像一位深邃的哲学家，激发用户的内省。";
+          break;
+        case "毒舌鞭策型":
+          stylePrompt = "请用【毒舌鞭策型】风格回复。一针见血，不留情面地指出用户的思维误区和软弱之处。言辞犀利，旨在打破用户的自我欺骗和舒适区，助其成长。不要无脑安慰。";
+          break;
+        default: // 温柔治愈型
+          stylePrompt = "请用【温柔治愈型】风格回复。语气要像一位知心姐姐，温暖、包容、充满鼓励。永远站在用户这一边，先共情，再安抚。";
+      }
     }
 
     String callUser = nickname.isNotEmpty ? "请称呼用户为“$nickname”。" : "";
@@ -180,19 +185,12 @@ $memoryBlock
     _scrollToBottom();
     _saveChatHistory(); // ✅ 发送即保存
 
-    // 从自定义配置读取 API 信息
-    String apiKey = await ApiSettingsService.getApiKey();
-    String apiUrl = await ApiSettingsService.getApiUrl();
-    String modelName = await ApiSettingsService.getModelName();
-
-    // 如果未配置 API Key，引导用户去配置
-    if (apiKey.isEmpty) {
-      if (mounted) {
-        _showConfigRequiredDialog();
-        setState(() => _isTyping = false);
-      }
-      return;
-    }
+    // 📌 使用用户配置的 API 设置（与日记内部聊天一致）
+    final prefs = await SharedPreferences.getInstance();
+    final apiKey = prefs.getString('custom_api_key') ?? dotenv.env['API_KEY'] ?? ''; 
+    final apiUrl = prefs.getString('custom_api_url') ?? dotenv.env['API_URL'] ?? 'https://api.deepseek.com/chat/completions';
+    final modelName = prefs.getString('custom_model_name') ?? 
+                     (apiUrl.contains("siliconflow") ? "deepseek-ai/DeepSeek-V3" : "deepseek-chat");
 
     try {
       // 🧠 RAG 检索：寻找相关记忆
@@ -212,7 +210,7 @@ $memoryBlock
                if (match != null) {
                  String content = match['content'];
                  // 截断过长内容，但保留更多上下文 (500字)
-                 if (content.length > 500) content = content.substring(0, 500) + "...";
+                 if (content.length > 500) content = "${content.substring(0, 500)}...";
                  sb.writeln(">> 日记【${res.key}】:");
                  sb.writeln(content);
 
@@ -283,15 +281,16 @@ $memoryBlock
         final message = data['choices']?[0]?['message'];
         
         if (message != null) {
-          // ✨ 处理 reasoner 模型的推理内容
+          // ✨ 处理推理模型的推理内容
           String? reasoningContent = message['reasoning_content'];
           final String? content = message['content'];
           
           String aiReply = content ?? '';
           
-          // 如果有推理内容，将其包装在 <think> 标签中
+          // 如果有推理内容，将其包装在 <think>标签中
           if (reasoningContent != null && reasoningContent.isNotEmpty) {
             aiReply = '<think>\n$reasoningContent\n</think>\n$aiReply';
+            print('🧠 [推理内容已添加]: ${reasoningContent.length} 字符');
           }
           
           if (aiReply.isNotEmpty) {
@@ -330,31 +329,6 @@ $memoryBlock
     });
   }
 
-  void _showConfigRequiredDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('需要配置 API'),
-        content: const Text(
-          '检测到您尚未配置 API Key。\n为了保护您的 API 余额并允许自定义，请先配置您的 API 信息。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.pushNamed(context, '/api-config');
-            },
-            child: const Text('去配置'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).primaryColor; // ✨ 获取动态主题色
@@ -375,7 +349,7 @@ $memoryBlock
                 context: context, 
                 builder: (ctx) => AlertDialog(
                   title: const Text("重置对话"),
-                  content: const Text("确定要清空与 AI 伴侣的聊天记录吗？\n（这不会影响日记和画像）"),
+                  content: const Text("确定要清空与 清言客的聊天记录吗？\n（这不会影响日记和画像）"),
                   actions: [
                     TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
                     TextButton(
@@ -427,7 +401,7 @@ $memoryBlock
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 推理显示组件（仅在 AI 消息且包含推理标签时显示）
+                        // ✨ 渲染思考内容（如果有）- 使用统一的可折叠组件
                         if (!isUser)
                           Builder(
                             builder: (context) {
@@ -438,7 +412,7 @@ $memoryBlock
                               return const SizedBox.shrink();
                             },
                           ),
-                        // 最终回复内容
+                        // ✨ 渲染正常回复
                         MarkdownBody(
                           data: () {
                             final parsed = ReasoningResult.parse(msg['content'].toString());

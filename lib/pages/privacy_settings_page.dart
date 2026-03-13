@@ -39,17 +39,24 @@ class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
       ),
     );
 
-    final result = await DiaryExportService.exportDiaries();
+    final result = await DiaryExportService.exportAndShareDiaries();
     
     // 关闭加载对话框
     if (context.mounted) {
       Navigator.pop(context);
     }
     
-    if (result.success && result.filePath != null) {
-      // 显示成功对话框，包含文件路径和操作按钮
+    if (result.success) {
+      // 移动端已自动弹出分享菜单，只需显示简单提示
       if (context.mounted) {
-        _showExportSuccessDialog(context, result.filePath!);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("导出成功！已打开分享菜单"),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
       }
     } else {
       // 显示错误提示
@@ -64,78 +71,6 @@ class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
         );
       }
     }
-  }
-
-  void _showExportSuccessDialog(BuildContext context, String filePath) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFFFDFBF7),
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.green, size: 28),
-            SizedBox(width: 8),
-            Text("导出成功"),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("文件已保存到：", style: TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                filePath,
-                style: const TextStyle(fontSize: 12, fontFamily: 'Consolas', height: 1.5),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              "💡 提示：\n• 点击\"打开文件夹\"可在文件管理器中查看\n• 点击\"复制路径\"可复制文件路径\n• 文件为 Markdown 格式，可用文本编辑器打开",
-              style: TextStyle(fontSize: 12, color: Colors.grey, height: 1.6),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: () {
-              // 复制路径到剪贴板
-              Clipboard.setData(ClipboardData(text: filePath));
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("路径已复制到剪贴板"),
-                  backgroundColor: Colors.blue,
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            },
-            icon: const Icon(Icons.content_copy, size: 18),
-            label: const Text("复制路径"),
-          ),
-          TextButton.icon(
-            onPressed: () async {
-              await DiaryExportService.openFileLocation(filePath);
-              Navigator.pop(context);
-            },
-            icon: const Icon(Icons.folder_open, size: 18),
-            label: const Text("打开文件夹"),
-            style: TextButton.styleFrom(
-              backgroundColor: Theme.of(context).primaryColor,
-              foregroundColor: Colors.white,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _clearCache() async {

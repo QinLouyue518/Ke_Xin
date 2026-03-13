@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_plus/share_plus.dart';
 
 /// 日记导出结果
 class DiaryExportResult {
@@ -19,8 +20,8 @@ class DiaryExportResult {
 
 /// 日记导出服务
 class DiaryExportService {
-  /// 导出所有日记为 Markdown 文件（返回文件路径，不自动分享）
-  static Future<DiaryExportResult> exportDiaries() async {
+  /// 导出所有日记为 Markdown 文件并分享
+  static Future<DiaryExportResult> exportAndShareDiaries() async {
     try {
       // 1. 从 SharedPreferences 读取所有日记数据
       final prefs = await SharedPreferences.getInstance();
@@ -43,7 +44,7 @@ class DiaryExportService {
       final markdownContent = _generateMarkdown(allDiaries);
       
       // 4. 创建临时文件
-      final directory = await getApplicationDocumentsDirectory();
+      final directory = await getTemporaryDirectory();
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final fileName = 'kexin_export_$timestamp.md';
       final file = File('${directory.path}/$fileName');
@@ -53,7 +54,16 @@ class DiaryExportService {
         [0xEF, 0xBB, 0xBF, ...utf8.encode(markdownContent)],
       );
       
-      // 6. 返回文件路径
+      // 6. 分享文件
+      if (Platform.isAndroid || Platform.isIOS) {
+        // 移动端：调用系统分享
+        await Share.shareXFiles([XFile(file.path)], subject: '刻心日记导出');
+      } else {
+        // 桌面端：打开文件所在文件夹
+        await openFileLocation(file.path);
+      }
+      
+      // 7. 返回文件路径
       return DiaryExportResult(
         success: true,
         filePath: file.path,

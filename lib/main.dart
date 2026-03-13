@@ -6,6 +6,8 @@ import 'package:flutter_application_1/pages/settings_page.dart'; // ✨ 引入 s
 import 'package:flutter_application_1/pages/api_config_page.dart'; // ✨ 引入 API 配置页面
 import 'package:flutter_application_1/write_diary_page.dart';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:ui';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -22,6 +24,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter_application_1/pages/chronicle_page.dart'; // 引入 ChroniclePage
 import 'package:flutter_application_1/services/vector_store_service.dart'; // ✨ 引入向量存储服务
+import 'package:flutter_application_1/services/background_settings_service.dart'; // ✨ 引入背景设置服务
+import 'package:flutter_application_1/services/card_style_settings_service.dart'; // ✨ 引入卡片样式设置服务
+import 'package:flutter_application_1/pages/capsule_list_page.dart'; // ✨ 引入胶囊页面
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,7 +37,6 @@ Future<void> main() async {
     debugPrint("注意：未找到 .env 文件");
   }
   runApp(
-    // ✨ 包裹 ChangeNotifierProvider
     ChangeNotifierProvider(
       create: (_) => ThemeProvider(),
       child: const MyApp(),
@@ -97,17 +101,61 @@ class _MyHomePageState extends State<MyHomePage> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   bool _isGalaxyView = false; // ✨ 星图/列表视图切换开关
+  bool _isLoading = true;
+  
+  // ✨ 背景设置相关
+  File? _backgroundImage;
+  double _backgroundBlur = 5.0;
+  bool _isBackgroundEnabled = false;
+  
+  // ✨ 卡片样式设置相关
+  Color _cardColor = CardStyleSettingsService.defaultCardColor;
+  double _cardOpacity = CardStyleSettingsService.defaultOpacity;
+  bool _isCardStyleEnabled = false;
 
   final ItemScrollController _itemScrollController = ItemScrollController();
   final ItemPositionsListener _itemPositionsListener = ItemPositionsListener.create();
-
-  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _selectedDay = _focusedDay;
     _loadData();
+    _loadBackgroundSettings();
+    _loadCardStyleSettings();
+  }
+
+  Future<void> _loadBackgroundSettings() async {
+    debugPrint('开始加载背景设置...');
+    final settings = await BackgroundSettingsService.getAllSettings();
+    debugPrint('背景设置：$settings');
+    if (mounted) {
+      setState(() {
+        _backgroundBlur = settings['blur'] as double;
+        _isBackgroundEnabled = settings['enabled'] as bool;
+        final path = settings['path'] as String?;
+        debugPrint('背景图片路径：$path');
+        if (path != null && path.isNotEmpty) {
+          _backgroundImage = File(path);
+          debugPrint('背景图片文件已加载：${_backgroundImage!.path}');
+        } else {
+          debugPrint('未找到背景图片路径');
+        }
+      });
+    }
+  }
+  
+  Future<void> _loadCardStyleSettings() async {
+    debugPrint('开始加载卡片样式设置...');
+    final settings = await CardStyleSettingsService.getAllSettings();
+    debugPrint('卡片样式设置：$settings');
+    if (mounted) {
+      setState(() {
+        _cardColor = Color(settings['color'] as int);
+        _cardOpacity = settings['opacity'] as double;
+        _isCardStyleEnabled = settings['enabled'] as bool;
+      });
+    }
   }
 
   Future<void> _saveData() async {
@@ -345,8 +393,36 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('构建主界面，背景状态：enabled=$_isBackgroundEnabled, image=${_backgroundImage != null}, blur=$_backgroundBlur');
     return Scaffold(
       extendBodyBehindAppBar: true,
+      // ✨ 自定义背景
+      body: Stack(
+        children: [
+          // 背景图片层
+          if (_backgroundImage != null && _isBackgroundEnabled)
+            Positioned.fill(
+              child: Image.file(
+                _backgroundImage!,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  debugPrint('背景图片加载失败：$error');
+                  return Container(color: Colors.grey[200]);
+                },
+              ),
+            ),
+          // 虚化效果层
+          if (_backgroundImage != null && _isBackgroundEnabled && _backgroundBlur > 0)
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: _backgroundBlur, sigmaY: _backgroundBlur),
+                child: Container(color: Colors.transparent),
+              ),
+            ),
+          // 内容层
+          _buildMainContent(),
+        ],
+      ),
       drawer: Drawer(
         backgroundColor: Colors.white.withValues(alpha: 0.95),
         surfaceTintColor: Colors.transparent,
@@ -438,14 +514,26 @@ class _MyHomePageState extends State<MyHomePage> {
                       Navigator.push(context, MaterialPageRoute(builder: (context) => const ChroniclePage()));
                     },
                   ),
+                  ListTile(
+                    leading: Icon(Icons.auto_awesome_outlined, color: Theme.of(context).primaryColor), // ✨ 动态主题色
+                    title: const Text("思想闪念", style: TextStyle(fontWeight: FontWeight.w500)),
+                    subtitle: const Text("零碎思想 · 情感碎片", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const CapsuleListPage()));
+                    },
+                  ),
                   const Divider(height: 30, indent: 20, endIndent: 20),
                   // ✨ 新增设置选项
                   ListTile(
                     leading: const Icon(Icons.settings_outlined, color: Colors.grey),
                     title: const Text("设置", style: TextStyle(fontWeight: FontWeight.w500)),
-                    onTap: () {
+                    onTap: () async {
                       Navigator.pop(context);
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()));
+                      await Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()));
+                      // 从设置页面返回时，重新加载背景设置和卡片样式设置
+                      _loadBackgroundSettings();
+                      _loadCardStyleSettings();
                     },
                   ),
                 ],
@@ -488,170 +576,11 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: Stack(
-        children: [
-          // ✨ 背景光晕 (仅在列表模式下显示)
-          if (!_isGalaxyView) ...[
-                Positioned(
-              top: -100,
-              right: -80,
-              child: Container(
-                width: 300, height: 300,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).primaryColor.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-              ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(duration: 4.seconds, begin: const Offset(1, 1), end: const Offset(1.1, 1.1)),
-            ),
-            Positioned(
-              bottom: 50,
-              left: -60,
-              child: Container(
-                width: 260, height: 260,
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.06),
-                  shape: BoxShape.circle,
-                ),
-              ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(duration: 5.seconds, delay: 1.seconds, begin: const Offset(1, 1), end: const Offset(1.2, 1.2)),
-            ),
-          ],
-
-          SafeArea(
-            child: _isLoading
-                ? _buildShimmerList()
-                : _diaryEntries.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.edit_note, size: 80, color: Colors.grey[300]),
-                            const SizedBox(height: 16),
-                            Text("纸短情长，记录当下", style: TextStyle(color: Colors.grey[400], fontSize: 16, letterSpacing: 1.5)),
-                          ],
-                        ),
-                      )
-                    : _isGalaxyView // ✨ 星图模式
-                        ? MemoryGalaxy(
-                            diaryEntries: _diaryEntries,
-                            onEntryUpdate: (updatedEntry) {
-                              // 更新数据
-                              int index = _diaryEntries.indexWhere((e) => e['date'] == updatedEntry['date']);
-                              if (index != -1) {
-                                setState(() {
-                                  _diaryEntries[index] = updatedEntry;
-                                });
-                                _saveData();
-                              }
-                            },
-                          )
-                        : ScrollablePositionedList.builder( // 列表模式
-                            itemScrollController: _itemScrollController,
-                            itemPositionsListener: _itemPositionsListener,
-                        itemCount: _diaryEntries.length,
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        itemBuilder: (context, index) {
-                          final entry = _diaryEntries[index];
-                          // final String entryId = '${entry['date']}_${entry['content']?.hashCode}';
-                          // final bool isExpanded = _expandedStates[entryId] ?? false;
-
-                          return GestureDetector(
-                            onTap: () {
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => DiaryReaderPage(
-                                entry: entry,
-                                onUpdate: (updatedEntry) {
-                                  setState(() {
-                                    _diaryEntries[index] = updatedEntry;
-                                  });
-                                  _saveData();
-                                },
-                                onDelete: () {
-                                  setState(() {
-                                    _diaryEntries.removeAt(index);
-                                  });
-                                  _saveData();
-                                },
-                                // ✨ 传入添加到事件的弹窗方法
-                                onAddToEvent: () => _showAddToEventDialog(entry),
-                              )));
-                            },
-                            child: Card(
-                              color: Colors.white.withValues(alpha: 0.9),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: const BorderRadius.all(Radius.circular(24)),
-                                side: BorderSide(color: Theme.of(context).primaryColor.withValues(alpha: 0.1)),
-                              ),
-                              margin: const EdgeInsets.only(bottom: 16.0),
-                              child: Padding(
-                                padding: const EdgeInsets.all(20.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Hero( // ✨ 日期作为 Hero
-                                          tag: 'date_${entry['date']}',
-                                          child: Material(
-                                            color: Colors.transparent,
-                                            child: Text(
-                                              DateFormat('M月d日').format(DateTime.parse(entry['date']!)),
-                                              style: TextStyle(fontSize: 16, color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold), 
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                          decoration: BoxDecoration(color: Theme.of(context).primaryColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                                          child: Text(entry['mood_keyword'] ?? '日记', style: TextStyle(fontSize: 12, color: Theme.of(context).primaryColor)),
-                                        ),
-                                        const Spacer(),
-                                        Text(entry['emoji'] ?? '😐', style: const TextStyle(fontSize: 24.0)),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12.0),
-                                    Hero( // ✨ 内容摘要作为 Hero，不再包裹 Card
-                                      tag: 'content_${entry['date']}',
-                                      child: Material(
-                                        color: Colors.transparent,
-                                        child: Text(
-                                          entry['content']!,
-                                          maxLines: 3, 
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontSize: 15.0, height: 1.6, color: Color(0xFF555555)),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                      if (_getEventNamesForDiary(entry['date']!).isNotEmpty)
-                                        SingleChildScrollView(
-                                          scrollDirection: Axis.horizontal,
-                                          child: Row(
-                                            children: _getEventNamesForDiary(entry['date']!).map((eventName) => 
-                                              Padding(
-                                                padding: const EdgeInsets.only(right: 6),
-                                                child: Text(
-                                                  "#$eventName", 
-                                                  style: TextStyle(fontSize: 11, color: Colors.grey[400])
-                                                ),
-                                              )
-                                            ).toList(),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                        },
-                      ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
-          final newEntry = await Navigator.push(context, MaterialPageRoute(builder: (context) => const WriteDiaryPage()));
-          if (newEntry != null) {
+          final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => const WriteDiaryPage()));
+          if (result != null && mounted) {
+            final newEntry = result as Map<String, dynamic>;
             setState(() {
               _diaryEntries.insert(0, newEntry as Map<String, String>);
               _diaryEntries.sort((a, b) => b['date']!.compareTo(a['date']!));
@@ -665,8 +594,167 @@ class _MyHomePageState extends State<MyHomePage> {
             VectorStoreService.indexDiary(newEntry['date']!, newEntry['content']!);
           }
         },
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: const Text('写日记'),
       ),
+    );
+  }
+
+  // ✨ 构建主内容区域（带背景光晕效果）
+  Widget _buildMainContent() {
+    return Stack(
+      children: [
+        // 背景光晕装饰（保留原有的动画光晕效果）
+        if (!_isGalaxyView) ...[
+          Positioned(
+            top: -100,
+            right: -80,
+            child: Container(
+              width: 300, height: 300,
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+            ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(duration: 4.seconds, begin: const Offset(1, 1), end: const Offset(1.1, 1.1)),
+          ),
+          Positioned(
+            bottom: 50,
+            left: -60,
+            child: Container(
+              width: 260, height: 260,
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.06),
+                shape: BoxShape.circle,
+              ),
+            ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(duration: 5.seconds, delay: 1.seconds, begin: const Offset(1, 1), end: const Offset(1.2, 1.2)),
+          ),
+        ],
+        SafeArea(
+          child: _isLoading
+              ? _buildShimmerList()
+              : _diaryEntries.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.edit_note, size: 80, color: Colors.grey[300]),
+                          const SizedBox(height: 16),
+                          Text("纸短情长，记录当下", style: TextStyle(color: Colors.grey[400], fontSize: 16, letterSpacing: 1.5)),
+                        ],
+                      ),
+                    )
+                  : _isGalaxyView
+                      ? MemoryGalaxy(
+                          diaryEntries: _diaryEntries,
+                          onEntryUpdate: (updatedEntry) {
+                            int index = _diaryEntries.indexWhere((e) => e['date'] == updatedEntry['date']);
+                            if (index != -1) {
+                              setState(() {
+                                _diaryEntries[index] = updatedEntry;
+                              });
+                              _saveData();
+                            }
+                          },
+                        )
+                      : ScrollablePositionedList.builder(
+                          itemScrollController: _itemScrollController,
+                          itemPositionsListener: _itemPositionsListener,
+                          itemCount: _diaryEntries.length,
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          itemBuilder: (context, index) {
+                            final entry = _diaryEntries[index];
+                            return GestureDetector(
+                              onTap: () {
+                                Navigator.push(context, MaterialPageRoute(builder: (context) => DiaryReaderPage(
+                                  entry: entry,
+                                  onUpdate: (updatedEntry) {
+                                    setState(() {
+                                      _diaryEntries[index] = updatedEntry;
+                                    });
+                                    _saveData();
+                                  },
+                                  onDelete: () {
+                                    setState(() {
+                                      _diaryEntries.removeAt(index);
+                                    });
+                                    _saveData();
+                                  },
+                                  onAddToEvent: () => _showAddToEventDialog(entry),
+                                )));
+                              },
+                              child: Card(
+                                color: (_isCardStyleEnabled ? _cardColor : Colors.white).withValues(alpha: _isCardStyleEnabled ? _cardOpacity : 0.9),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: const BorderRadius.all(Radius.circular(24)),
+                                  side: BorderSide(color: Theme.of(context).primaryColor.withValues(alpha: 0.1)),
+                                ),
+                                margin: const EdgeInsets.only(bottom: 16.0),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(20.0),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Hero(
+                                            tag: 'date_${entry['date']}',
+                                            child: Material(
+                                              color: Colors.transparent,
+                                              child: Text(
+                                                DateFormat('M 月 d 日').format(DateTime.parse(entry['date']!)),
+                                                style: const TextStyle(fontSize: 16, color: Color(0xFF555555), fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(color: Theme.of(context).primaryColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                                            child: Text(entry['mood_keyword'] ?? '日记', style: TextStyle(fontSize: 12, color: Theme.of(context).primaryColor)),
+                                          ),
+                                          const Spacer(),
+                                          Text(entry['emoji'] ?? '😐', style: const TextStyle(fontSize: 24.0)),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12.0),
+                                      Hero(
+                                        tag: 'content_${entry['date']}',
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: Text(
+                                            entry['content']!,
+                                            maxLines: 3,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontSize: 15.0, height: 1.6, color: Color(0xFF555555)),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      if (_getEventNamesForDiary(entry['date']!).isNotEmpty)
+                                        SingleChildScrollView(
+                                          scrollDirection: Axis.horizontal,
+                                          child: Row(
+                                            children: _getEventNamesForDiary(entry['date']!).map((eventName) =>
+                                              Padding(
+                                                padding: const EdgeInsets.only(right: 6),
+                                                child: Text(
+                                                  "#$eventName",
+                                                  style: TextStyle(fontSize: 11, color: Colors.grey[400])
+                                                ),
+                                              )
+                                            ).toList(),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+        ),
+      ],
     );
   }
 }

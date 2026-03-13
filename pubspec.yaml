@@ -1,9 +1,9 @@
-name: flutter_application_1
+﻿name: flutter_application_1
 description: "A new Flutter project."
 publish_to: 'none'
 
 # 版本号
-version: 1.6.5+23
+version: 1.7.3+28
 
 environment:
   sdk: ^3.10.3
@@ -32,6 +32,7 @@ dependencies:
   qr_flutter: ^4.1.0
   sensors_plus: ^7.0.0
   audioplayers: ^6.5.1
+  image_picker: ^1.0.7
 
 # 开发依赖
 dev_dependencies:

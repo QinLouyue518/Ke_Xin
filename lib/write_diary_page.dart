@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_application_1/services/vector_store_service.dart';
-import 'package:flutter_application_1/services/api_settings_service.dart';
 class WriteDiaryPage extends StatefulWidget {
   final Map<String, String>? existingEntry;
 
@@ -73,16 +73,12 @@ class _WriteDiaryPageState extends State<WriteDiaryPage> {
     }
   }
 
-  // AI 分析函数
+  // AI 分析函数 (保持不变)
   Future<Map<String, dynamic>> analyzeMood(String text) async {
-    // 从自定义配置读取 API 信息
-    final apiKey = await ApiSettingsService.getApiKey();
-    final apiUrl = await ApiSettingsService.getApiUrl();
+    final apiKey = dotenv.env['API_KEY'] ?? ''; 
+    final apiUrl = dotenv.env['API_URL'] ?? 'https://api.siliconflow.cn/v1/chat/completions';
 
-    // 如果未配置 API Key，使用本地回退
-    if (apiKey.isEmpty) {
-      return _getLocalFallback(text);
-    }
+    if (apiKey.isEmpty || apiKey.startsWith('sk-xxxx')) return _getLocalFallback(text);
 
     // ✨ 1. 升级版“记忆涟漪”：使用向量检索寻找最相似的过往日记
     String pastDiariesContext = "";
@@ -106,7 +102,7 @@ class _WriteDiaryPageState extends State<WriteDiaryPage> {
               // 依然只允许“回顾过去”，不许“预知未来”（防止检索到比当前选定日期更晚的日记）
               if (itemDate.isBefore(cutoffDate)) {
                  String content = match['content'].toString();
-                 String summary = content.length > 80 ? content.substring(0, 80) + "..." : content;
+                 String summary = content.length > 80 ? "${content.substring(0, 80)}..." : content;
                  sb.writeln("[ID: ${match['date']}] 内容摘要：$summary (相似度: ${(res.value * 100).toStringAsFixed(0)}%)");
               }
             }

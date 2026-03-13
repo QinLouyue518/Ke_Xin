@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'custom_style_editor_page.dart';
 
 class AISettingsPage extends StatefulWidget {
   const AISettingsPage({super.key});
@@ -11,12 +12,14 @@ class AISettingsPage extends StatefulWidget {
 class _AISettingsPageState extends State<AISettingsPage> {
   final TextEditingController _nicknameController = TextEditingController();
   String _selectedStyle = "温柔治愈型"; // 默认风格
+  String _customStylePrompt = ""; // 自定义风格 prompt
 
   final Map<String, String> _styleDescriptions = {
     "温柔治愈型": "以鼓励、安抚为主，像一位知心姐姐，永远站在你这边。",
     "理性分析型": "逻辑缜密，帮你拆解问题，提供客观建议，像一位睿智的导师。",
     "苏格拉底型": "多提问少回答，引导你自己寻找答案，像一位深刻的哲学家。",
     "毒舌鞭策型": "一针见血，不留情面地指出你的问题，助你打破舒适区。",
+    "自定义风格": "完全由你定义的专属 AI 伴侣风格。",
   };
 
   @override
@@ -30,6 +33,7 @@ class _AISettingsPageState extends State<AISettingsPage> {
     setState(() {
       _nicknameController.text = prefs.getString('ai_user_nickname') ?? "";
       _selectedStyle = prefs.getString('ai_style') ?? "温柔治愈型";
+      _customStylePrompt = prefs.getString('ai_custom_style_prompt') ?? "";
     });
   }
 
@@ -37,9 +41,30 @@ class _AISettingsPageState extends State<AISettingsPage> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('ai_user_nickname', _nicknameController.text.trim());
     await prefs.setString('ai_style', _selectedStyle);
+    await prefs.setString('ai_custom_style_prompt', _customStylePrompt);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("AI 设置已更新")));
       Navigator.pop(context);
+    }
+  }
+
+  void _navigateToCustomStyleEditor(BuildContext context) async {
+    final primaryColor = Theme.of(context).primaryColor;
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CustomStyleEditorPage(
+          initialPrompt: _customStylePrompt,
+          primaryColor: primaryColor,
+        ),
+      ),
+    );
+    
+    if (result != null && result is String) {
+      setState(() {
+        _customStylePrompt = result;
+        _selectedStyle = "自定义风格";
+      });
     }
   }
 
@@ -86,11 +111,16 @@ class _AISettingsPageState extends State<AISettingsPage> {
           const SizedBox(height: 12),
           ..._styleDescriptions.keys.map((style) {
             final isSelected = _selectedStyle == style;
+            final isCustomStyle = style == "自定义风格";
             return GestureDetector(
               onTap: () {
-                setState(() {
-                  _selectedStyle = style;
-                });
+                if (isCustomStyle) {
+                  _navigateToCustomStyleEditor(context);
+                } else {
+                  setState(() {
+                    _selectedStyle = style;
+                  });
+                }
               },
               child: Container(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -113,7 +143,15 @@ class _AISettingsPageState extends State<AISettingsPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(style, style: TextStyle(fontWeight: FontWeight.bold, color: isSelected ? primaryColor : Colors.black87)),
+                          Row(
+                            children: [
+                              Text(style, style: TextStyle(fontWeight: FontWeight.bold, color: isSelected ? primaryColor : Colors.black87)),
+                              if (isCustomStyle) ...[
+                                const SizedBox(width: 6),
+                                Icon(Icons.edit, size: 14, color: primaryColor.withOpacity(0.7)),
+                              ],
+                            ],
+                          ),
                           const SizedBox(height: 4),
                           Text(_styleDescriptions[style]!, style: TextStyle(fontSize: 12, color: Colors.grey[600], height: 1.4)),
                         ],

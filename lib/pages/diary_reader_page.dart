@@ -108,12 +108,11 @@ class _DiaryReaderPageState extends State<DiaryReaderPage> {
                           child: Material(
                             color: Colors.transparent,
                             child: Text(
-                              DateFormat('M月d日').format(date),
-                              style: TextStyle(
+                              DateFormat('M 月 d 日').format(date),
+                              style: const TextStyle(
                                 fontSize: 24, 
                                 fontWeight: FontWeight.bold, 
-                                color: theme.themeColor,
-                                fontFamily: 'Serif'
+                                color: Color(0xFF555555),
                               ),
                             ),
                           ),
@@ -161,8 +160,7 @@ class _DiaryReaderPageState extends State<DiaryReaderPage> {
                           style: const TextStyle(
                             fontSize: 17, 
                             height: 1.8, 
-                            color: Color(0xFF2D2D2D),
-                            fontFamily: 'Serif',
+                            color: const Color(0xFF2D2D2D),
                             letterSpacing: 0.5,
                           ),
                         ),
